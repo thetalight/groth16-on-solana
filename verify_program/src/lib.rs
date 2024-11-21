@@ -10,14 +10,15 @@ use verifier_key::VERIFIER_KEY;
 
 pub mod errors;
 pub mod verifier_key;
-entrypoint!(process_instruction);
 
 const PI_LENGTH: usize = 1;
+
+entrypoint!(process_instruction);
 
 // Define the instruction enum
 #[derive(BorshSerialize, BorshDeserialize)]
 pub enum ProgramInstruction {
-    Verify(Proof),
+    Verify(ConvertedProof),
 }
 
 pub fn process_instruction(
@@ -32,7 +33,7 @@ pub fn process_instruction(
     }
 }
 
-fn verify_proof(_program_id: &Pubkey, _accounts: &[AccountInfo], proof: Proof) -> ProgramResult {
+fn verify_proof(_program_id: &Pubkey, _accounts: &[AccountInfo], proof: ConvertedProof) -> ProgramResult {
     let prepare_input = prepare_inputs(proof.public_inputs.as_slice(), &VERIFIER_KEY)
         .map_err(|_| ProgramError::Custom(1))?;
 
@@ -91,7 +92,7 @@ pub fn is_less_than_bn254_field_size_be(bytes: &[u8; 32]) -> bool {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, BorshSerialize, BorshDeserialize)]
-pub struct Proof {
+pub struct ConvertedProof {
     a: [u8; 64],
     b: [u8; 128],
     c: [u8; 64],

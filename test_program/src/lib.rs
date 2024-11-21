@@ -21,7 +21,6 @@ pub struct ConvertedProof {
     pub c: [u8; 64],
 }
 
-
 #[derive(Debug)]
 pub struct ConvertedVK {
     pub vk_alpha_g1: [u8; 64],
@@ -139,7 +138,7 @@ impl Groth16Verifier {
         let converted_proof = Self::convert_proof(proof);
         let converted_pi = Self::convert_public_input(pi);
         let converted_vk = Self::convert_vk(vk);
-        println!("{:?}",converted_vk);
+        println!("{:?}", converted_vk);
         Self::verify_with_converted(&converted_proof, &converted_pi, &converted_vk)
     }
 
@@ -174,17 +173,57 @@ impl Groth16Verifier {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use ark_bn254::{Bn254, Fr};
     use ark_groth16::Groth16;
-    use ark_serialize::CanonicalSerialize;
     use ark_snark::SNARK;
+    use borsh::{to_vec, BorshDeserialize, BorshSerialize};
     use rand_chacha::ChaChaRng;
     use rand_core::SeedableRng;
+    use solana_client::nonblocking::rpc_client::RpcClient;
+    use solana_sdk::{
+        commitment_config::CommitmentConfig,
+        instruction::{AccountMeta, Instruction},
+        pubkey::Pubkey,
+        signature::Keypair,
+        signer::Signer,
+        transaction::Transaction,
+    };
 
     use crate::{circuit::Multiplier2Circuit, Groth16Verifier};
 
+    #[derive(PartialEq, Eq, Debug, Clone, BorshSerialize, BorshDeserialize)]
+    pub struct ConvertedProof {
+        a: [u8; 64],
+        b: [u8; 128],
+        c: [u8; 64],
+        public_inputs: [[u8; 32]; 1],
+    }
+
+    #[derive(BorshSerialize, BorshDeserialize)]
+    pub enum ProgramInstruction {
+        Verify(ConvertedProof),
+    }
+
+    async fn request_airdrop(
+        client: &RpcClient,
+        pubkey: &Pubkey,
+        amount: u64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let signature = client.request_airdrop(pubkey, amount).await?;
+
+        loop {
+            let confirmation = client.confirm_transaction(&signature).await.unwrap();
+            if confirmation {
+                break;
+            }
+        }
+        Ok(())
+    }
+
     #[test]
-    fn test_circuit() {
+    fn test_off_chain() {
         let mut rng = ChaChaRng::from_seed([0u8; 32]);
 
         let a = Fr::from(3);
@@ -194,15 +233,6 @@ mod test {
         let (prover_key, verifier_key) =
             Groth16::<Bn254>::circuit_specific_setup(Multiplier2Circuit::default(), &mut rng)
                 .unwrap();
-
-            // {
-            //     let mut p_bytes = vec![];
-            //      prover_key.serialize_compressed(&mut p_bytes).unwrap();
-            //     println!("pbytes:{:?}",p_bytes);
-            //      let mut v_bytes = vec![];
-            //      verifier_key.serialize_compressed(&mut v_bytes).unwrap();
-            //      println!("vbytes:{:?}",p_bytes);
-            // }
 
         let proof = Groth16::<Bn254>::prove(&prover_key, circuit.clone(), &mut rng).unwrap();
 
@@ -215,5 +245,67 @@ mod test {
         .unwrap());
 
         Groth16Verifier::verify(&proof, &circuit.public_inputs(), &pvk.vk).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_on_chain() {
+        // Replace with your program ID
+        let program_id = "GfWPnub4XEEXejRU2BpZfm6RXCuPx8Vz9NRCMPx5aHrN";
+
+        let rpc_url = "http://127.0.0.1:8899".to_string();
+        let client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
+
+        // Load or create a keypair for the payer
+        let payer = Keypair::new();
+        let airdrop_amount = 1_000_000_000;
+        request_airdrop(&client, &payer.pubkey(), airdrop_amount)
+            .await
+            .unwrap();
+
+        let program_id = Pubkey::from_str(program_id).unwrap();
+
+        let mut rng = ChaChaRng::from_seed([0u8; 32]);
+        let a = Fr::from(3);
+        let b = Fr::from(4);
+        let circuit = Multiplier2Circuit::new(a, b);
+
+        let (prover_key, _verifier_key) =
+            Groth16::<Bn254>::circuit_specific_setup(Multiplier2Circuit::default(), &mut rng)
+                .unwrap();
+
+        let proof = Groth16::<Bn254>::prove(&prover_key, circuit.clone(), &mut rng).unwrap();
+        let converted_proof = Groth16Verifier::convert_proof(&proof);
+
+        let converted_proof = ConvertedProof {
+            a: converted_proof.a,
+            b: converted_proof.b,
+            c: converted_proof.c,
+            public_inputs: Groth16Verifier::convert_public_input(&circuit.public_inputs())
+                .try_into()
+                .unwrap(),
+        };
+
+        let instruction_data = to_vec(&ProgramInstruction::Verify(converted_proof)).unwrap();
+        let instruction = Instruction::new_with_bytes(
+            program_id,
+            instruction_data.as_slice(),
+            vec![AccountMeta::new(payer.pubkey(), true)],
+        );
+
+        let recent_blockhash = client.get_latest_blockhash().await.unwrap();
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&payer.pubkey()),
+            &[&payer],
+            recent_blockhash,
+        );
+
+        match client
+            .send_and_confirm_transaction_with_spinner(&transaction)
+            .await
+        {
+            Ok(signature) => println!("Succeess: {}", signature),
+            Err(err) => println!("Failed: {:?}", err),
+        }
     }
 }
