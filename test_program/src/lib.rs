@@ -138,7 +138,6 @@ impl Groth16Verifier {
         let converted_proof = Self::convert_proof(proof);
         let converted_pi = Self::convert_public_input(pi);
         let converted_vk = Self::convert_vk(vk);
-        println!("{:?}", converted_vk);
         Self::verify_with_converted(&converted_proof, &converted_pi, &converted_vk)
     }
 
