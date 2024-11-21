@@ -1,0 +1,15 @@
+[package]
+name = "verify_program"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-program = "=2.0.3"
+thiserror = "1.0"
+borsh = { version = "1.5.1", features = ["derive"] }
+num-bigint = "0.4.6"
+ark-bn254 = "0.5.0"
+ark-ff = "0.5.0"
