@@ -1,5 +1,5 @@
 [package]
-name = "test_program"
+name = "client_program"
 version = "0.1.0"
 edition = "2021"
 

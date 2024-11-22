@@ -193,16 +193,11 @@ mod test {
     use crate::{circuit::Multiplier2Circuit, Groth16Verifier};
 
     #[derive(PartialEq, Eq, Debug, Clone, BorshSerialize, BorshDeserialize)]
-    pub struct ConvertedProof {
+    pub struct ConvertedProofAndPi {
         a: [u8; 64],
         b: [u8; 128],
         c: [u8; 64],
-        public_inputs: [[u8; 32]; 1],
-    }
-
-    #[derive(BorshSerialize, BorshDeserialize)]
-    pub enum ProgramInstruction {
-        Verify(ConvertedProof),
+        pi: [[u8; 32]; 1],
     }
 
     async fn request_airdrop(
@@ -249,7 +244,7 @@ mod test {
     #[tokio::test]
     async fn test_on_chain() {
         // Replace with your program ID
-        let program_id = "GfWPnub4XEEXejRU2BpZfm6RXCuPx8Vz9NRCMPx5aHrN";
+        let program_id = "Ai7bjhMCADqTTPZ48n7yw1dW4HkktvPUnisTnYhzMn9c";
 
         let rpc_url = "http://127.0.0.1:8899".to_string();
         let client = RpcClient::new_with_commitment(rpc_url, CommitmentConfig::confirmed());
@@ -275,16 +270,16 @@ mod test {
         let proof = Groth16::<Bn254>::prove(&prover_key, circuit.clone(), &mut rng).unwrap();
         let converted_proof = Groth16Verifier::convert_proof(&proof);
 
-        let converted_proof = ConvertedProof {
+        let converted_proof_and_pi = ConvertedProofAndPi {
             a: converted_proof.a,
             b: converted_proof.b,
             c: converted_proof.c,
-            public_inputs: Groth16Verifier::convert_public_input(&circuit.public_inputs())
+            pi: Groth16Verifier::convert_public_input(&circuit.public_inputs())
                 .try_into()
                 .unwrap(),
         };
 
-        let instruction_data = to_vec(&ProgramInstruction::Verify(converted_proof)).unwrap();
+        let instruction_data = to_vec(&converted_proof_and_pi).unwrap();
         let instruction = Instruction::new_with_bytes(
             program_id,
             instruction_data.as_slice(),

@@ -1,5 +1,7 @@
 use crate::Groth16VerifyingKeyPrepared;
 
+pub const PI_LENGTH: usize = 1;
+
 pub const VERIFIER_KEY: Groth16VerifyingKeyPrepared = Groth16VerifyingKeyPrepared {
     vk_alpha_g1: [
         12, 131, 7, 68, 183, 107, 59, 74, 204, 114, 251, 232, 67, 238, 169, 85, 171, 255, 21, 199,
